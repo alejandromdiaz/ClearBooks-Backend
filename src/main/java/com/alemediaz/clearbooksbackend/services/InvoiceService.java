@@ -50,7 +50,7 @@ public class InvoiceService {
                 .orElseThrow(() -> new RuntimeException("Customer not found"));
 
         Invoice invoice = new Invoice();
-        invoice.setInvoiceNumber(generateUniqueInvoiceNumber(userId));
+        invoice.setInvoiceNumber(generateUniqueInvoiceNumberForUser(userId));
         invoice.setCustomer(customer);
         invoice.setUserId(userId);
         invoice.setInvoiceDate(invoiceDto.getInvoiceDate() != null ?
@@ -137,7 +137,6 @@ public class InvoiceService {
             System.out.println("Estimate ID: " + estimateId);
             System.out.println("User ID: " + userId);
 
-            // Find the estimate
             Estimate estimate = estimateRepository.findById(estimateId)
                     .orElseThrow(() -> new RuntimeException("Estimate not found with ID: " + estimateId));
 
@@ -147,9 +146,8 @@ public class InvoiceService {
                 throw new RuntimeException("Unauthorized: Estimate does not belong to user");
             }
 
-            // Create invoice from estimate
             Invoice invoice = new Invoice();
-            invoice.setInvoiceNumber(generateUniqueInvoiceNumber(userId));
+            invoice.setInvoiceNumber(generateUniqueInvoiceNumberForUser(userId));
             invoice.setCustomer(estimate.getCustomer());
             invoice.setUserId(userId);
             invoice.setInvoiceDate(LocalDate.now());
@@ -168,7 +166,6 @@ public class InvoiceService {
 
             System.out.println("Saved invoice with ID: " + savedInvoice.getId());
 
-            // Copy items
             for (InvoiceItem estimateItem : estimate.getItems()) {
                 InvoiceItem invoiceItem = new InvoiceItem();
                 invoiceItem.setInvoice(savedInvoice);
@@ -183,7 +180,6 @@ public class InvoiceService {
 
             System.out.println("Saved invoice with " + savedInvoice.getItems().size() + " items");
 
-            // Delete the estimate
             estimateRepository.delete(estimate);
 
             System.out.println("Deleted estimate");
@@ -199,20 +195,23 @@ public class InvoiceService {
     }
 
     /**
-     * Generates a unique invoice number with retry logic to handle race conditions
+     * Generates a unique invoice number for a specific user
      */
-    private String generateUniqueInvoiceNumber(Long userId) {
+    private String generateUniqueInvoiceNumberForUser(Long userId) {
         int maxRetries = 10;
         int attempt = 0;
 
         while (attempt < maxRetries) {
-            String invoiceNumber = generateInvoiceNumber(userId, attempt);
+            String invoiceNumber = generateInvoiceNumberForUser(userId, attempt);
 
-            // Check if this number already exists
+            System.out.println("DEBUG: Attempt " + attempt + " - Generated: " + invoiceNumber + " for userId: " + userId);
+
             if (!invoiceRepository.existsByInvoiceNumber(invoiceNumber)) {
+                System.out.println("DEBUG: Invoice number " + invoiceNumber + " is unique");
                 return invoiceNumber;
             }
 
+            System.out.println("DEBUG: Invoice number " + invoiceNumber + " already exists, retrying...");
             attempt++;
         }
 
@@ -220,32 +219,48 @@ public class InvoiceService {
     }
 
     /**
-     * Generates invoice number based on the last invoice for the user
+     * Generates invoice number based on THIS user's invoices only
      */
-    private String generateInvoiceNumber(Long userId, int offset) {
-        List<Invoice> invoices = invoiceRepository.findTopByUserIdOrderByInvoiceNumberDesc(userId);
+    private String generateInvoiceNumberForUser(Long userId, int offset) {
+        // Get ONLY this user's invoices
+        List<Invoice> userInvoices = invoiceRepository.findByUserIdOrderByInvoiceDateDesc(userId);
         int currentYear = LocalDate.now().getYear();
 
-        if (invoices.isEmpty()) {
-            return String.format("INV-%d-%04d", currentYear, 1 + offset);
+        System.out.println("DEBUG: User " + userId + " has " + userInvoices.size() + " total invoices");
+
+        if (userInvoices.isEmpty()) {
+            String number = String.format("INV-%d-%04d", currentYear, 1 + offset);
+            System.out.println("DEBUG: First invoice for user, generating: " + number);
+            return number;
         }
 
-        String lastNumber = invoices.get(0).getInvoiceNumber();
-        String[] parts = lastNumber.split("-");
+        // Find the highest sequence number for the current year FOR THIS USER
+        int highestSequence = 0;
+        for (Invoice inv : userInvoices) {
+            String invNumber = inv.getInvoiceNumber();
+            System.out.println("DEBUG: Checking user invoice: " + invNumber);
 
-        // Check if last invoice was from current year
-        int lastYear = Integer.parseInt(parts[1]);
-        int lastSequence = Integer.parseInt(parts[2]);
+            try {
+                String[] parts = invNumber.split("-");
+                if (parts.length == 3) {
+                    int invYear = Integer.parseInt(parts[1]);
+                    int invSequence = Integer.parseInt(parts[2]);
 
-        int nextNumber;
-        if (lastYear == currentYear) {
-            nextNumber = lastSequence + 1 + offset;
-        } else {
-            // New year, reset to 1
-            nextNumber = 1 + offset;
+                    if (invYear == currentYear && invSequence > highestSequence) {
+                        highestSequence = invSequence;
+                        System.out.println("DEBUG: New highest sequence for current year: " + highestSequence);
+                    }
+                }
+            } catch (Exception e) {
+                System.err.println("DEBUG: Error parsing invoice number: " + invNumber);
+            }
         }
 
-        return String.format("INV-%d-%04d", currentYear, nextNumber);
+        int nextNumber = highestSequence + 1 + offset;
+        String invoiceNumber = String.format("INV-%d-%04d", currentYear, nextNumber);
+        System.out.println("DEBUG: Next number: " + nextNumber + " -> " + invoiceNumber);
+
+        return invoiceNumber;
     }
 
     private InvoiceDTO convertToDto(Invoice invoice) {
@@ -264,7 +279,6 @@ public class InvoiceService {
         dto.setIsPaid(invoice.getIsPaid());
         dto.setPaidDate(invoice.getPaidDate());
 
-        // Add user details
         if (invoice.getUser() != null) {
             dto.setUserCompanyName(invoice.getUser().getCompanyName());
             dto.setUserAddress(invoice.getUser().getAddress());
