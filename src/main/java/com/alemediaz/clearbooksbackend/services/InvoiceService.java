@@ -50,7 +50,7 @@ public class InvoiceService {
                 .orElseThrow(() -> new RuntimeException("Customer not found"));
 
         Invoice invoice = new Invoice();
-        invoice.setInvoiceNumber(generateUniqueInvoiceNumberForUser(userId));
+        invoice.setInvoiceNumber(generateInvoiceNumberForUser(userId));
         invoice.setCustomer(customer);
         invoice.setUserId(userId);
         invoice.setInvoiceDate(invoiceDto.getInvoiceDate() != null ?
@@ -147,7 +147,7 @@ public class InvoiceService {
             }
 
             Invoice invoice = new Invoice();
-            invoice.setInvoiceNumber(generateUniqueInvoiceNumberForUser(userId));
+            invoice.setInvoiceNumber(generateInvoiceNumberForUser(userId));
             invoice.setCustomer(estimate.getCustomer());
             invoice.setUserId(userId);
             invoice.setInvoiceDate(LocalDate.now());
@@ -195,33 +195,10 @@ public class InvoiceService {
     }
 
     /**
-     * Generates a unique invoice number for a specific user
-     */
-    private String generateUniqueInvoiceNumberForUser(Long userId) {
-        int maxRetries = 10;
-        int attempt = 0;
-
-        while (attempt < maxRetries) {
-            String invoiceNumber = generateInvoiceNumberForUser(userId, attempt);
-
-            System.out.println("DEBUG: Attempt " + attempt + " - Generated: " + invoiceNumber + " for userId: " + userId);
-
-            if (!invoiceRepository.existsByInvoiceNumber(invoiceNumber)) {
-                System.out.println("DEBUG: Invoice number " + invoiceNumber + " is unique");
-                return invoiceNumber;
-            }
-
-            System.out.println("DEBUG: Invoice number " + invoiceNumber + " already exists, retrying...");
-            attempt++;
-        }
-
-        throw new RuntimeException("Could not generate unique invoice number after " + maxRetries + " attempts");
-    }
-
-    /**
      * Generates invoice number based on THIS user's invoices only
+     * Each user has their own independent invoice numbering sequence
      */
-    private String generateInvoiceNumberForUser(Long userId, int offset) {
+    private String generateInvoiceNumberForUser(Long userId) {
         // Get ONLY this user's invoices
         List<Invoice> userInvoices = invoiceRepository.findByUserIdOrderByInvoiceDateDesc(userId);
         int currentYear = LocalDate.now().getYear();
@@ -229,7 +206,7 @@ public class InvoiceService {
         System.out.println("DEBUG: User " + userId + " has " + userInvoices.size() + " total invoices");
 
         if (userInvoices.isEmpty()) {
-            String number = String.format("INV-%d-%04d", currentYear, 1 + offset);
+            String number = String.format("INV-%d-%04d", currentYear, 1);
             System.out.println("DEBUG: First invoice for user, generating: " + number);
             return number;
         }
@@ -256,7 +233,7 @@ public class InvoiceService {
             }
         }
 
-        int nextNumber = highestSequence + 1 + offset;
+        int nextNumber = highestSequence + 1;
         String invoiceNumber = String.format("INV-%d-%04d", currentYear, nextNumber);
         System.out.println("DEBUG: Next number: " + nextNumber + " -> " + invoiceNumber);
 

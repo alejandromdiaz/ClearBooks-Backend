@@ -11,7 +11,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Entity
-@Table(name = "estimates")
+@Table(name = "estimates",
+        uniqueConstraints = {
+                @UniqueConstraint(columnNames = {"user_id", "estimate_number"})
+        })
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -20,7 +23,7 @@ public class Estimate {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "estimate_number", unique = true, nullable = false, length = 50)
+    @Column(name = "estimate_number", nullable = false, length = 50)
     private String estimateNumber;
 
     @ManyToOne

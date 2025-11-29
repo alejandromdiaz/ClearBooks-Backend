@@ -11,7 +11,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Entity
-@Table(name = "invoices")
+@Table(name = "invoices",
+        uniqueConstraints = {
+                @UniqueConstraint(columnNames = {"user_id", "invoice_number"})
+        })
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -20,7 +23,7 @@ public class Invoice {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "invoice_number", unique = true, nullable = false, length = 50)
+    @Column(name = "invoice_number", nullable = false, length = 50)
     private String invoiceNumber;
 
     @ManyToOne
